@@ -1,0 +1,69 @@
+% Déclaration des prédicats dynamiques (leur contenu peut changer pendant l'exécution)
+:- dynamic poids_lesloosers/2.
+:- dynamic faitspoidsini_lesloosers/0.
+
+% Permet d'avoir plusieurs définitions de joue/3 séparées dans le fichier
+:- discontiguous joue/3.
+
+% Premier cas : si la partie contient 10 coups ou moins
+% On observe simplement les coups adverses pour analyser leurs fréquences
+joue(lesloosers, L, 4) :-
+    length(L, N),          % N = nombre de coups déjà joués
+    N =< 10, !,            % si N ≤ 10 on coupe et on utilise la phase d'observation
+    pondération_lesloosers(L).
+
+% Cas général : après la phase d'observation
+joue(lesloosers, CoupsPrec, R) :-
+    % Initialisation des poids si ce n'est pas encore fait
+    (\+ faitspoidsini_lesloosers -> poidsini_lesloosers ; true),
+
+    % Mise à jour des poids selon les coups précédents de l'adversaire
+    maj_lesloosers(CoupsPrec),
+
+    % Recherche du poids maximum
+    trouvenbmax_lesloosers(Max),
+
+    % Choix du coup
+    (Max > 1 -> R is ((Max - 1) mod 5) + 1 ; random_between(1, 5, R)).
+
+% Phase d'observation : analyse des coups adverses
+pondération_lesloosers(L) :-
+    ca_lesloosers(L, ListeCoups),        % extrait les coups adverses
+    frequence_lesloosers(ListeCoups, _). % calcule leur fréquence
+
+% Extraction des coups adverses depuis la liste des coups précédents
+ca_lesloosers([], []).
+ca_lesloosers([[_, Adv]|Reste], [Adv|Liste]) :-
+    ca_lesloosers(Reste, Liste).
+
+% Calcul de la fréquence de chaque coup (1 à 5)
+frequence_lesloosers(Liste, Frequencies) :-
+    findall(F, (between(1, 5, X), nb_de_fois_lesloosers(X, Liste, F)), Frequencies).
+
+% Compte combien de fois un coup X apparaît dans la liste
+nb_de_fois_lesloosers(_, [], 0).
+nb_de_fois_lesloosers(X, [X|T], N) :-
+    nb_de_fois_lesloosers(X, T, N1),
+    N is N1 + 1, !.
+nb_de_fois_lesloosers(X, [_|T], N) :-
+    nb_de_fois_lesloosers(X, T, N).
+
+% Initialisation des poids : chaque coup (1..5) commence avec un poids de 1
+poidsini_lesloosers :-
+    forall(between(1, 5, N), assertz(poids_lesloosers(N, 1))),
+    assertz(faitspoidsini_lesloosers).
+
+% Mise à jour des poids selon les coups adverses observés
+maj_lesloosers([]).
+maj_lesloosers([[_, CA]|L]) :-
+    (   retract(poids_lesloosers(CA, P))   % on récupère le poids actuel
+    ->  NewP is P + 1,                     % on l'incrémente
+        assertz(poids_lesloosers(CA, NewP))
+    ;   true
+    ),
+    maj_lesloosers(L).
+
+% Recherche du poids maximum parmi tous les coups
+trouvenbmax_lesloosers(Max) :-
+    findall(P, poids_lesloosers(_, P), ListePoids),
+    max_member(Max, ListePoids).
